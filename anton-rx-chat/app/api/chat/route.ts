@@ -14,21 +14,28 @@ import path from "path";
 
 // DB_PATH env var is used in deployed environments (set to 'data/anton_rx.db').
 // Falls back to the sibling-folder path for local development.
+// turbopackIgnore prevents Turbopack from tracing the entire filesystem on
+// these dynamic path.join calls during the production build.
 const dbPath = process.env.DB_PATH
-  ? path.join(process.cwd(), process.env.DB_PATH)
-  : path.join(process.cwd(), '../anton-rx-backend/anton_rx.db');
+  ? path.join(/*turbopackIgnore: true*/ process.cwd(), process.env.DB_PATH)
+  : path.join(/*turbopackIgnore: true*/ process.cwd(), '../anton-rx-backend/anton_rx.db');
 const db = new Database(dbPath, { readonly: true });
 
-const SYSTEM_PROMPT = `You are the Anton Rx Medical Policy Assistant. 
+const SYSTEM_PROMPT = `You are the Anton Rx Medical Policy Assistant.
 You are a specialized AI designed to help users quickly look up and understand medical benefit drug policies across payers.
 
-AUTONOMY RULES:
-1. When asked to compare a drug across "all" payers or "multiple" payers, if you do not know the exact payer names, first use the 'get_available_payers' tool to see who is in the system.
-2. The 'compare_drug_between_payers' tool's 'health_plans' parameter is OPTIONAL. If you want to search all payers for a drug, simply omit this parameter and provide the drug 'query' only.
-3. If asked about recently updated policies, policy reviews, or shifts in coverage (e.g., changes to prior auth or step therapy), use the 'get_policy_changes' tool to search the most recent document changelogs.
-4. When using the 'compare_drug_between_payers' tool, do NOT restate or retype the raw data in your text response! The UI will render an interactive comparison table automatically. You should ONLY provide a 1-2 sentence high-level executive summary of the biggest difference.
-5. For single-drug searches not using the comparison tool, provide a clear, concise text summary of its coverage status, whether prior auth is required, and the specific criteria.
-6. If multiple tools or results are returned, prioritize succinctness and let the UI components do the heavy lifting.`;
+CRITICAL TOOL USAGE RULES — READ CAREFULLY:
+1. The 'query' parameter in ALL tools must be the DRUG NAME ONLY. NEVER include a payer name, health plan name, or any other text in the 'query' field.
+   - CORRECT:   query="Botox",  payer="UnitedHealthcare"
+   - INCORRECT: query="Botox UnitedHealthcare"
+   - CORRECT:   query="Humira"
+   - INCORRECT: query="Humira covered by Cigna"
+2. If the user asks about a specific payer (e.g., "Does UnitedHealthcare cover Botox?"), use 'search_drug_policy' with the drug name in 'query' AND the payer name in the optional 'payer' field.
+3. When asked to compare a drug across "all" payers or "multiple" payers and you do not know the exact payer names, first use 'get_available_payers'.
+4. The 'compare_drug_between_payers' tool's 'health_plans' parameter is OPTIONAL. Omit it to search all payers.
+5. If asked about recently updated policies or policy changes, use 'get_policy_changes'.
+6. When using 'compare_drug_between_payers', do NOT restate the raw data in your response — the UI renders an interactive table automatically. Provide only a 1-2 sentence executive summary of the key difference.
+7. For single-drug lookups, provide a clear summary: coverage status, whether prior auth is required, and the key criteria.`;
 
 export async function POST(req: Request) {
   const {
@@ -51,32 +58,46 @@ export async function POST(req: Request) {
       ...frontendTools(tools ?? {}),
       // @ts-ignore
       search_drug_policy: tool({
-        description: "Searches the Anton Rx database for drug policies, coverage, and prior authorization criteria. You MUST provide the 'query' parameter with the drug name.",
+        description: "Searches the Anton Rx database for drug policies, coverage, and prior authorization criteria. The 'query' field must contain ONLY the drug name — never include a payer name in it.",
         parameters: z.object({
-          query: z.string().describe("The REQUIRED exact name of the drug to look up (e.g., 'Avastin', 'Humira')."),
+          query: z.string().describe("The drug name ONLY (brand or generic). Examples: 'Botox', 'Humira', 'bevacizumab'. Do NOT include payer names here."),
+          payer: z.string().optional().describe("OPTIONAL: Filter results to a specific health plan (e.g., 'UnitedHealthcare', 'Cigna', 'Florida Blue'). Use this when the user asks about a specific payer."),
         }),
         // @ts-expect-error - AI SDK model generic resolution mismatch
         execute: async (args: any) => {
           try {
             const drugName = args?.query || args?.drug_name;
             if (!drugName) {
-              return { success: false, message: "Error: You must provide a specific drug name to search." };
+              return { success: false, message: "Error: You must provide a drug name to search." };
             }
-            const stmt = db.prepare(`
-              SELECT d.payer, d.effective_date, dp.brand_name, dp.generic_name, dp.drug_category, 
-                     dp.coverage_status, dp.prior_auth_required, dp.prior_auth_criteria, dp.step_therapy_required, 
-                     dp.biosimilar_step_detail, dp.hcpcs_codes, dp.maximum_units, dp.authorization_duration, dp.indications, dp.icd10_codes 
+            const like = `%${drugName}%`;
+            const payerFilter = args?.payer?.trim();
+
+            let sql = `
+              SELECT d.payer, d.effective_date, dp.brand_name, dp.generic_name, dp.drug_category,
+                     dp.coverage_status, dp.prior_auth_required, dp.prior_auth_criteria, dp.step_therapy_required,
+                     dp.biosimilar_step_detail, dp.hcpcs_codes, dp.maximum_units, dp.authorization_duration,
+                     dp.indications, dp.icd10_codes
               FROM drug_policies dp
               JOIN documents d ON dp.document_id = d.id
-              WHERE dp.brand_name LIKE ? OR dp.generic_name LIKE ?
-              LIMIT 15
-            `);
-            const rows = stmt.all(`%${drugName}%`, `%${drugName}%`);
-            
-            if (rows.length === 0) {
-              return { success: false, message: `No policy found for drug matching '${drugName}'. Try a different spelling.` };
+              WHERE (dp.brand_name LIKE ? OR dp.generic_name LIKE ?)
+            `;
+            const params: any[] = [like, like];
+
+            if (payerFilter) {
+              sql += ` AND d.payer LIKE ?`;
+              params.push(`%${payerFilter}%`);
             }
-            
+
+            sql += ` LIMIT 15`;
+
+            const rows = db.prepare(sql).all(...params);
+
+            if (rows.length === 0) {
+              const context = payerFilter ? ` under ${payerFilter}` : "";
+              return { success: false, message: `No policy found for '${drugName}'${context}. Try a different spelling or payer name.` };
+            }
+
             return { success: true, policies: rows as any[] };
           } catch (error) {
             console.error("Database query failed:", error);
