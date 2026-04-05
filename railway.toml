@@ -1,9 +1,4 @@
-[build]
-builder = "NIXPACKS"
-buildCommand = "cd anton-rx-chat && npm ci && npm run build"
-
 [deploy]
-startCommand = "cd anton-rx-chat && npm start"
 healthcheckPath = "/"
 healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
