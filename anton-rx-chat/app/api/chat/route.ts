@@ -12,14 +12,27 @@ import { z } from "zod";
 import Database from "better-sqlite3";
 import path from "path";
 
-// DB_PATH env var is used in deployed environments (set to 'data/anton_rx.db').
-// Falls back to the sibling-folder path for local development.
-// turbopackIgnore prevents Turbopack from tracing the entire filesystem on
-// these dynamic path.join calls during the production build.
-const dbPath = process.env.DB_PATH
-  ? path.join(/*turbopackIgnore: true*/ process.cwd(), process.env.DB_PATH)
-  : path.join(/*turbopackIgnore: true*/ process.cwd(), '../anton-rx-backend/anton_rx.db');
-const db = new Database(dbPath, { readonly: true });
+// Tell Next.js this route is always dynamic so it is never statically
+// pre-rendered during `next build` (which would try to open the DB at
+// build time when the file doesn't exist yet).
+export const dynamic = "force-dynamic";
+
+// Lazy singleton — the DB connection is created on the first real request,
+// not at module-evaluation time (which happens during `next build`).
+let _db: InstanceType<typeof Database> | null = null;
+function getDb(): InstanceType<typeof Database> {
+  if (!_db) {
+    // DB_PATH env var is used in deployed environments (set to 'data/anton_rx.db').
+    // Falls back to the sibling-folder path for local development.
+    // turbopackIgnore prevents Turbopack from tracing the entire filesystem on
+    // these dynamic path.join calls during the production build.
+    const dbPath = process.env.DB_PATH
+      ? path.join(/*turbopackIgnore: true*/ process.cwd(), process.env.DB_PATH)
+      : path.join(/*turbopackIgnore: true*/ process.cwd(), '../anton-rx-backend/anton_rx.db');
+    _db = new Database(dbPath, { readonly: true });
+  }
+  return _db;
+}
 
 const SYSTEM_PROMPT = `You are the Anton Rx Medical Policy Assistant.
 You are a specialized AI designed to help users quickly look up and understand medical benefit drug policies across payers.
@@ -91,7 +104,7 @@ export async function POST(req: Request) {
 
             sql += ` LIMIT 15`;
 
-            const rows = db.prepare(sql).all(...params);
+            const rows = getDb().prepare(sql).all(...params);
 
             if (rows.length === 0) {
               const context = payerFilter ? ` under ${payerFilter}` : "";
@@ -143,7 +156,7 @@ export async function POST(req: Request) {
                   WHERE (dp.brand_name LIKE ? OR dp.generic_name LIKE ?) AND d.payer IN (${payerPlaceholders})
                   GROUP BY d.payer
                  `;
-                 const stmt = db.prepare(sql);
+                 const stmt = getDb().prepare(sql);
                  rows = stmt.all(like, like, ...payerList);
              } else {
                  const sql = `
@@ -155,7 +168,7 @@ export async function POST(req: Request) {
                   GROUP BY d.payer
                   LIMIT 15
                  `;
-                 const stmt = db.prepare(sql);
+                 const stmt = getDb().prepare(sql);
                  rows = stmt.all(like, like);
              }
              
@@ -173,7 +186,7 @@ export async function POST(req: Request) {
           // @ts-expect-error - AI SDK model generic resolution mismatch
           execute: async () => {
               try {
-                  const stmt = db.prepare("SELECT DISTINCT payer FROM documents ORDER BY payer ASC");
+                  const stmt = getDb().prepare("SELECT DISTINCT payer FROM documents ORDER BY payer ASC");
                   const payers = stmt.all();
                   return { success: true, payers: payers.map((p: any) => p.payer) };
               } catch (error) {
@@ -205,7 +218,7 @@ export async function POST(req: Request) {
             }
             
             sql += ` ORDER BY effective_date DESC LIMIT 20`;
-            const stmt = db.prepare(sql);
+            const stmt = getDb().prepare(sql);
             const rows = stmt.all(...params);
             
             if (rows.length === 0) {
