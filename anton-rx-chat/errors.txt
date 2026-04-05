@@ -1,0 +1,13 @@
+components/assistant-ui/attachment.tsx(93,9): error TS2322: Type '{ children: ReactNode; className: string; asChild: true; }' is not assignable to type 'IntrinsicAttributes & Props<unknown>'.
+  Property 'asChild' does not exist on type 'IntrinsicAttributes & Props<unknown>'.
+components/assistant-ui/attachment.tsx(120,23): error TS2322: Type '{ children: Element; delayMs: number; }' is not assignable to type 'IntrinsicAttributes & AvatarFallbackProps'.
+  Property 'delayMs' does not exist on type 'IntrinsicAttributes & AvatarFallbackProps'. Did you mean 'delay'?
+components/assistant-ui/attachment.tsx(155,27): error TS2322: Type '{ children: Element; asChild: true; }' is not assignable to type 'IntrinsicAttributes & Props<unknown>'.
+  Property 'asChild' does not exist on type 'IntrinsicAttributes & Props<unknown>'.
+components/assistant-ui/thread.tsx(7,27): error TS2307: Cannot find module '@/components/assistant-ui/reasoning' or its corresponding type declarations.
+components/assistant-ui/threadlist-sidebar.tsx(26,44): error TS2322: Type '{ children: Element; size: "lg"; asChild: true; }' is not assignable to type 'IntrinsicAttributes & ClassAttributes<HTMLButtonElement> & ButtonHTMLAttributes<HTMLButtonElement> & { ...; } & { ...; } & VariantProps<...>'.
+  Property 'asChild' does not exist on type 'IntrinsicAttributes & ClassAttributes<HTMLButtonElement> & ButtonHTMLAttributes<HTMLButtonElement> & { ...; } & { ...; } & VariantProps<...>'.
+components/assistant-ui/threadlist-sidebar.tsx(53,42): error TS2322: Type '{ children: Element; size: "lg"; asChild: true; }' is not assignable to type 'IntrinsicAttributes & ClassAttributes<HTMLButtonElement> & ButtonHTMLAttributes<HTMLButtonElement> & { ...; } & { ...; } & VariantProps<...>'.
+  Property 'asChild' does not exist on type 'IntrinsicAttributes & ClassAttributes<HTMLButtonElement> & ButtonHTMLAttributes<HTMLButtonElement> & { ...; } & { ...; } & VariantProps<...>'.
+components/assistant-ui/tooltip-icon-button.tsx(25,23): error TS2322: Type '{ children: Element; asChild: true; }' is not assignable to type 'IntrinsicAttributes & Props<unknown>'.
+  Property 'asChild' does not exist on type 'IntrinsicAttributes & Props<unknown>'.

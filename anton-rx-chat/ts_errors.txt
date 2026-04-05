@@ -1,0 +1,3 @@
+app/api/chat/route.ts(57,49): error TS1127: Invalid character.
+app/api/chat/route.ts(57,50): error TS1136: Property assignment expected.
+app/api/chat/route.ts(72,1): error TS1160: Unterminated template literal.
