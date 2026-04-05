@@ -13,6 +13,11 @@ RUN npm ci
 # Copy source and build
 COPY anton-rx-chat .
 
+# Bake the pre-populated DB into the image so the API route can open it at
+# runtime. DB_PATH must be set to "data/anton_rx.db" in Railway env vars.
+RUN mkdir -p data
+COPY anton-rx-backend/anton_rx.db ./data/anton_rx.db
+
 RUN npm run build
 
 # Prune devDependencies after the build so the final image stays lean

@@ -1,0 +1,14 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install Python dependencies
+COPY anton-rx-backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy backend source (includes anton_rx.db)
+COPY anton-rx-backend .
+
+# Railway injects $PORT; Streamlit must bind to 0.0.0.0 on that port
+EXPOSE 8501
+CMD ["sh", "-c", "streamlit run dashboard.py --server.port ${PORT:-8501} --server.address 0.0.0.0 --server.headless true"]
